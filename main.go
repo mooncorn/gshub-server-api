@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/mooncorn/gshub-core/db"
-	"github.com/mooncorn/gshub-core/middlewares"
+	coreMiddlewares "github.com/mooncorn/gshub-core/middlewares"
 	"github.com/mooncorn/gshub-core/models"
+	"github.com/mooncorn/gshub-server-api/handlers"
+	"github.com/mooncorn/gshub-server-api/middlewares"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -39,7 +41,14 @@ func main() {
 		ExposeHeaders: []string{"Content-Length"},
 		AllowHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
 	}))
-	r.Use(middlewares.CheckUser)
+
+	r.Use(coreMiddlewares.CheckUser)
+	r.Use(coreMiddlewares.RequireUser)
+	r.Use(middlewares.CheckOwnership)
+
+	r.GET("/state", handlers.GetState)
+	r.GET("/console", handlers.GetConsole)
+	r.POST("/run", handlers.RunCommand)
 
 	r.Run(":" + port)
 }
