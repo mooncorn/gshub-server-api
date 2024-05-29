@@ -12,13 +12,6 @@ import (
 func CheckOwnership(c *gin.Context) {
 	email := c.GetString("userEmail")
 
-	instanceID, err := helpers.GetInstanceId()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get instance id", "details": err.Error()})
-		c.Abort()
-		return
-	}
-
 	dbInstance := db.GetDatabase()
 
 	// Get User
@@ -31,7 +24,7 @@ func CheckOwnership(c *gin.Context) {
 
 	// Check if this instance belongs to this user
 	var server models.Server
-	if err := dbInstance.GetDB().Where(&models.Server{UserID: user.ID, InstanceID: instanceID}).First(&server).Error; err != nil {
+	if err := dbInstance.GetDB().Where(&models.Server{UserID: user.ID, InstanceID: helpers.INSTANCE_ID}).First(&server).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Access unauthorized"})
 		c.Abort()
 		return

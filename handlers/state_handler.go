@@ -12,7 +12,7 @@ type Container struct {
 }
 
 func GetState(c *gin.Context) {
-	apiClient, err := client.NewClientWithOpts(client.FromEnv)
+	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create docker client"})
 		return
