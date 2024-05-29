@@ -3,9 +3,13 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
@@ -100,6 +104,38 @@ func CreateServer(c *gin.Context) {
 		return
 	}
 	defer apiClient.Close()
+
+	// Check if the image exists and pull it if it does not
+	images, err := apiClient.ImageList(c, types.ImageListOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list images", "details": err.Error()})
+		return
+	}
+
+	imageExists := false
+	for _, image := range images {
+		for _, tag := range image.RepoTags {
+			if tag == service.Image {
+				imageExists = true
+				break
+			}
+		}
+		if imageExists {
+			break
+		}
+	}
+
+	fmt.Println(imageExists)
+
+	if !imageExists {
+		out, err := apiClient.ImagePull(c, service.Image, image.PullOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pull image", "details": err.Error()})
+			return
+		}
+		defer out.Close()
+		io.Copy(os.Stdout, out)
+	}
 
 	if _, err := apiClient.ContainerCreate(c, &container.Config{
 		Env:   containerEnv,
