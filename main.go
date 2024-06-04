@@ -55,7 +55,9 @@ func main() {
 	r.POST("/run", handlers.RunCommand)
 	r.GET("/env", handlers.GetEnv)
 
-	r.POST("/servers", handlers.CreateServer)
+	r.POST("/start", handlers.StartServer)
+	r.POST("/stop", handlers.StopServer)
+	r.POST("/create", handlers.CreateServer)
 
 	r.Run(":" + port)
 }
