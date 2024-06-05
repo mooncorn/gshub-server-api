@@ -8,13 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mooncorn/gshub-core/db"
 	"github.com/mooncorn/gshub-core/models"
-	"github.com/mooncorn/gshub-server-api/helpers"
+	"github.com/mooncorn/gshub-server-api/config"
 )
 
 func GetEnv(c *gin.Context) {
 	var server models.Server
 	dbInstance := db.GetDatabase()
-	if err := dbInstance.GetDB().Where(&models.Server{InstanceID: helpers.INSTANCE_ID}).First(&server).Error; err != nil {
+	if err := dbInstance.GetDB().Where(&models.Server{InstanceID: config.Env.InstanceId}).First(&server).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Server not found"})
 		return
 	}

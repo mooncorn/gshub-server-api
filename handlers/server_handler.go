@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
@@ -16,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mooncorn/gshub-core/db"
 	"github.com/mooncorn/gshub-core/models"
+	"github.com/mooncorn/gshub-server-api/config"
 	"github.com/mooncorn/gshub-server-api/helpers"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -70,7 +70,7 @@ func CreateServer(c *gin.Context) {
 
 	// Get server based on INSTANCE_ID
 	var server models.Server
-	if err := dbInstance.GetDB().Where(&models.Server{InstanceID: helpers.INSTANCE_ID}).First(&server).Error; err != nil {
+	if err := dbInstance.GetDB().Where(&models.Server{InstanceID: config.Env.InstanceId}).First(&server).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Server not found"})
 		return
 	}
@@ -106,7 +106,7 @@ func CreateServer(c *gin.Context) {
 	defer apiClient.Close()
 
 	// Check if the image exists and pull it if it does not
-	images, err := apiClient.ImageList(c, types.ImageListOptions{})
+	images, err := apiClient.ImageList(c, image.ListOptions{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list images", "details": err.Error()})
 		return

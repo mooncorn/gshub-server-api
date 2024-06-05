@@ -2,39 +2,43 @@ package main
 
 import (
 	"log"
-	"os"
+	"strings"
 
 	"github.com/mooncorn/gshub-core/db"
 	coreMiddlewares "github.com/mooncorn/gshub-core/middlewares"
 	"github.com/mooncorn/gshub-core/models"
+	"github.com/mooncorn/gshub-server-api/config"
 	"github.com/mooncorn/gshub-server-api/handlers"
-	"github.com/mooncorn/gshub-server-api/helpers"
 	"github.com/mooncorn/gshub-server-api/middlewares"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	config.LoadEnv()
 
-	// Retrieve instance ID
-	helpers.GetInstanceId()
-
-	port := os.Getenv("PORT")
-	dsn := os.Getenv("DSN")
-
-	gormDB := db.NewGormDB(dsn)
+	// Setup database
+	gormDB := db.NewGormDB(config.Env.DSN)
 	db.SetDatabase(gormDB)
 
-	// AutoMigrate the models
-	err = db.GetDatabase().GetDB().AutoMigrate(&models.Plan{}, &models.Service{}, &models.Server{}, &models.User{})
+	// Migrate the models
+	err := db.GetDatabase().GetDB().AutoMigrate(
+		&models.User{},
+		&models.Plan{},
+		&models.Service{},
+		&models.ServiceEnv{},
+		&models.ServiceEnvValue{},
+		&models.ServiceVolume{},
+		&models.ServicePort{},
+		&models.Server{},
+	)
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
+	}
+
+	if strings.ToLower(config.Env.GinMode) == "release" {
+		gin.SetMode(gin.ReleaseMode)
 	}
 
 	r := gin.Default()
@@ -59,5 +63,5 @@ func main() {
 	r.POST("/stop", handlers.StopServer)
 	r.POST("/create", handlers.CreateServer)
 
-	r.Run(":" + port)
+	r.Run(":" + config.Env.Port)
 }

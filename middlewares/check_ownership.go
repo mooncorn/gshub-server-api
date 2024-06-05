@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mooncorn/gshub-core/db"
 	"github.com/mooncorn/gshub-core/models"
-	"github.com/mooncorn/gshub-server-api/helpers"
+	"github.com/mooncorn/gshub-server-api/config"
 )
 
 func CheckOwnership(c *gin.Context) {
@@ -24,7 +24,7 @@ func CheckOwnership(c *gin.Context) {
 
 	// Check if this instance belongs to this user
 	var server models.Server
-	if err := dbInstance.GetDB().Where(&models.Server{UserID: user.ID, InstanceID: helpers.INSTANCE_ID}).First(&server).Error; err != nil {
+	if err := dbInstance.GetDB().Where(&models.Server{UserID: user.ID, InstanceID: config.Env.InstanceId}).First(&server).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Access unauthorized"})
 		c.Abort()
 		return
