@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,11 +15,9 @@ import (
 	"github.com/mooncorn/gshub-core/db"
 	"github.com/mooncorn/gshub-core/models"
 	"github.com/mooncorn/gshub-server-api/config"
-	"github.com/mooncorn/gshub-server-api/helpers"
+	"github.com/mooncorn/gshub-server-api/core"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
-
-const MEMORY_NAME = "Memory"
 
 func StartServer(c *gin.Context) {
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -71,30 +68,37 @@ func CreateServer(c *gin.Context) {
 	// Get server based on INSTANCE_ID
 	var server models.Server
 	if err := dbInstance.GetDB().Where(&models.Server{InstanceID: config.Env.InstanceId}).First(&server).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Server not found"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Server not found"})
 		return
 	}
 
 	// Get service
 	var service models.Service
 	if err := dbInstance.GetDB().Preload("Env.Values").Preload("Ports").Preload("Volumes").Where(&models.Service{ID: server.ServiceID}).First(&service).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Service not found"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Service not found"})
 		return
 	}
 
 	// Get plan
 	var plan models.Plan
 	if err := dbInstance.GetDB().Where(&models.Plan{ID: server.PlanID}).First(&plan).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Plan not found"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Plan not found"})
 		return
 	}
 
-	containerEnv, err := ProcessEnvVars(request.Env, service, plan)
+	gameServer, err := core.NewGameServer(&service, &plan)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid server configuration", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server configuration", "details": err.Error()})
 		return
 	}
 
+	config, err := gameServer.ValidateConfig(request.Env)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server configuration", "details": err.Error()})
+		return
+	}
+
+	containerEnv := FormatEnv(config)
 	containerPorts := FormatPorts(service.Ports)
 	containerVolumes := FormatVolumes(service.Volumes)
 
@@ -155,68 +159,12 @@ func UpdateServer(c *gin.Context) {}
 
 func DeleteServer(c *gin.Context) {}
 
-// Process environment variables for the given service and plan configuration.
-func ProcessEnvVars(config map[string]string, service models.Service, plan models.Plan) ([]string, error) {
-	var containerEnv []string
-	var memoryEnv *models.ServiceEnv
-
-	// Validate and process each environment variable from the service
-	for _, env := range service.Env {
-		if env.Name == MEMORY_NAME {
-			memoryEnv = &env
-			continue
-		}
-
-		value, ok := config[env.Key]
-		if !ok {
-			if env.Required {
-				return nil, fmt.Errorf("%s is required", env.Key)
-			}
-			containerEnv = append(containerEnv, fmt.Sprintf("%s=%s", env.Key, env.Default))
-			continue
-		}
-
-		if !IsValidEnvValue(env.Values, value) {
-			return nil, fmt.Errorf("invalid %s: %s", env.Key, value)
-		}
-
-		containerEnv = append(containerEnv, fmt.Sprintf("%s=%s", env.Key, value))
+func FormatEnv(env map[string]string) []string {
+	formattedEnv := make([]string, 0, len(env))
+	for key, value := range env {
+		formattedEnv = append(formattedEnv, key+"="+value)
 	}
-
-	// Process memory environment variable if it exists
-	if memoryEnv != nil {
-		if err := ProcessMemoryEnvVar(memoryEnv, service, plan, &containerEnv); err != nil {
-			return nil, err
-		}
-	}
-
-	return containerEnv, nil
-}
-
-// Check if the provided value is one of the allowed values.
-func IsValidEnvValue(values []models.ServiceEnvValue, value string) bool {
-	for _, envValue := range values {
-		if envValue.Value == value {
-			return true
-		}
-	}
-	return false
-}
-
-// Process the memory-specific environment variable.
-func ProcessMemoryEnvVar(memoryEnv *models.ServiceEnv, service models.Service, plan models.Plan, containerEnv *[]string) error {
-	serverMemory := helpers.CalculateServerMemory(plan.Memory)
-	if !helpers.CheckMinimumMemory(serverMemory, service.MinMem) {
-		return errors.New("not enough memory for this service")
-	}
-
-	envValue, err := helpers.FindEnvMemoryValue(service, serverMemory, MEMORY_NAME)
-	if err != nil {
-		return errors.New("appropriate memory env value not found")
-	}
-
-	*containerEnv = append(*containerEnv, fmt.Sprintf("%s=%s", memoryEnv.Key, envValue.Value))
-	return nil
+	return formattedEnv
 }
 
 func FormatPorts(ports []models.ServicePort) map[nat.Port][]nat.PortBinding {
@@ -232,9 +180,11 @@ func FormatPorts(ports []models.ServicePort) map[nat.Port][]nat.PortBinding {
 }
 
 func FormatVolumes(volumes []models.ServiceVolume) []string {
-	var binds []string
-	for _, vol := range volumes {
-		binds = append(binds, fmt.Sprintf("%s:%s", vol.Host, vol.Destination))
+	binds := make([]string, len(volumes))
+
+	for i, vol := range volumes {
+		binds[i] = fmt.Sprintf("%s:%s", vol.Host, vol.Destination)
 	}
+
 	return binds
 }

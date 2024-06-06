@@ -21,7 +21,13 @@ func GetState(c *gin.Context) {
 
 	container, err := apiClient.ContainerInspect(c, "main")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get container info", "details": err.Error()})
+
+		if client.IsErrNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+			return
+		}
+
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get server info", "details": err.Error()})
 		return
 	}
 
