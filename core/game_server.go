@@ -21,7 +21,7 @@ func NewGameServer(service *models.Service, plan *models.Plan) (*GameServer, err
 
 	strategy, exists := strategies[service.NameID]
 	if !exists {
-		return nil, fmt.Errorf("no server config strategy for this service: %s", service.NameID)
+		return nil, fmt.Errorf("no server strategy for this service: %s", service.NameID)
 	}
 
 	return &GameServer{

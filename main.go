@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"strings"
 
 	"github.com/mooncorn/gshub-core/db"
@@ -49,6 +50,10 @@ func main() {
 		ExposeHeaders: []string{"Content-Length"},
 		AllowHeaders:  []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
 	}))
+
+	r.GET("/", func(ctx *gin.Context) {
+		ctx.JSON(http.StatusOK, gin.H{"version": config.Env.Version})
+	})
 
 	r.Use(coreMiddlewares.CheckUser)
 	r.Use(coreMiddlewares.RequireUser)
