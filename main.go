@@ -52,7 +52,7 @@ func main() {
 	}))
 
 	r.GET("/", func(ctx *gin.Context) {
-		ctx.JSON(http.StatusOK, gin.H{"version": config.Env.Version})
+		ctx.Status(http.StatusOK)
 	})
 
 	r.Use(coreMiddlewares.CheckUser)
@@ -67,6 +67,7 @@ func main() {
 	r.POST("/start", handlers.StartServer)
 	r.POST("/stop", handlers.StopServer)
 	r.POST("/create", handlers.CreateServer)
+	r.DELETE("/remove", handlers.DeleteServer)
 
 	r.Run(":" + config.Env.Port)
 }

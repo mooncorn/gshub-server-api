@@ -129,8 +129,6 @@ func CreateServer(c *gin.Context) {
 		}
 	}
 
-	fmt.Println(imageExists)
-
 	if !imageExists {
 		out, err := apiClient.ImagePull(c, service.Image, image.PullOptions{})
 		if err != nil {
@@ -157,7 +155,23 @@ func CreateServer(c *gin.Context) {
 
 func UpdateServer(c *gin.Context) {}
 
-func DeleteServer(c *gin.Context) {}
+func DeleteServer(c *gin.Context) {
+	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create docker client"})
+		return
+	}
+	defer apiClient.Close()
+
+	if err := apiClient.ContainerRemove(c, "main", container.RemoveOptions{
+		RemoveVolumes: false,
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove server", "details": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusOK)
+}
 
 func FormatEnv(env map[string]string) []string {
 	formattedEnv := make([]string, 0, len(env))

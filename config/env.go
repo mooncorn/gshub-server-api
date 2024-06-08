@@ -16,7 +16,6 @@ type Environment struct {
 	Port       string
 	JWTSecret  string
 	InstanceId string
-	Version    string
 }
 
 func LoadEnv() {
@@ -46,6 +45,5 @@ func LoadEnv() {
 		Port:       os.Getenv("PORT"),
 		JWTSecret:  os.Getenv("JWT_SECRET"),
 		InstanceId: os.Getenv("INSTANCE_ID"),
-		Version:    os.Getenv("VERSION"),
 	}
 }
