@@ -12,14 +12,13 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/gin-gonic/gin"
-	"github.com/mooncorn/gshub-core/db"
-	"github.com/mooncorn/gshub-core/models"
-	"github.com/mooncorn/gshub-server-api/config"
-	"github.com/mooncorn/gshub-server-api/core"
+	"github.com/mooncorn/gshub-core/config"
+	coreConfig "github.com/mooncorn/gshub-core/config"
+	"github.com/mooncorn/gshub-server-api/app"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-func StartServer(c *gin.Context) {
+func StartServer(c *gin.Context, appCtx *app.Context) {
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create docker client"})
@@ -36,7 +35,7 @@ func StartServer(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-func StopServer(c *gin.Context) {
+func StopServer(c *gin.Context, appCtx *app.Context) {
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create docker client"})
@@ -53,9 +52,10 @@ func StopServer(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-func CreateServer(c *gin.Context) {
+func CreateService(c *gin.Context, appCtx *app.Context) {
 	var request struct {
-		Env map[string]string `json:"env"`
+		Config map[string]string `json:"config"`
+		Type   string            `json:"type"`
 	}
 
 	if err := c.BindJSON(&request); err != nil {
@@ -63,44 +63,21 @@ func CreateServer(c *gin.Context) {
 		return
 	}
 
-	dbInstance := db.GetDatabase()
-
-	// Get server based on INSTANCE_ID
-	var server models.Server
-	if err := dbInstance.GetDB().Where(&models.Server{InstanceID: config.Env.InstanceId}).First(&server).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Server not found"})
-		return
-	}
-
-	// Get service
-	var service models.Service
-	if err := dbInstance.GetDB().Preload("Env.Values").Preload("Ports").Preload("Volumes").Where(&models.Service{ID: server.ServiceID}).First(&service).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Service not found"})
-		return
-	}
-
-	// Get plan
-	var plan models.Plan
-	if err := dbInstance.GetDB().Where(&models.Plan{ID: server.PlanID}).First(&plan).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Plan not found"})
-		return
-	}
-
-	gameServer, err := core.NewGameServer(&service, &plan)
+	config, err := appCtx.ServiceController.ValidateConfig(request.Env)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server configuration", "details": err.Error()})
 		return
 	}
 
-	config, err := gameServer.ValidateConfig(request.Env)
+	serviceConfig, err := coreConfig.GetServiceConfiguration(appCtx.ServiceData.ServiceNameID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server configuration", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get service configuration", "details": err.Error()})
 		return
 	}
 
 	containerEnv := FormatEnv(config)
-	containerPorts := FormatPorts(service.Ports)
-	containerVolumes := FormatVolumes(service.Volumes)
+	containerPorts := FormatPorts(serviceConfig.Ports)
+	containerVolumes := FormatVolumes(serviceConfig.Volumes)
 
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -119,7 +96,7 @@ func CreateServer(c *gin.Context) {
 	imageExists := false
 	for _, image := range images {
 		for _, tag := range image.RepoTags {
-			if tag == service.Image {
+			if tag == appCtx.ServiceData.ServiceImage {
 				imageExists = true
 				break
 			}
@@ -130,7 +107,7 @@ func CreateServer(c *gin.Context) {
 	}
 
 	if !imageExists {
-		out, err := apiClient.ImagePull(c, service.Image, image.PullOptions{})
+		out, err := apiClient.ImagePull(c, appCtx.ServiceData.ServiceImage, image.PullOptions{})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to pull image", "details": err.Error()})
 			return
@@ -141,7 +118,7 @@ func CreateServer(c *gin.Context) {
 
 	if _, err := apiClient.ContainerCreate(c, &container.Config{
 		Env:   containerEnv,
-		Image: service.Image,
+		Image: appCtx.ServiceData.ServiceImage,
 	}, &container.HostConfig{
 		PortBindings: containerPorts,
 		Binds:        containerVolumes,
@@ -153,9 +130,9 @@ func CreateServer(c *gin.Context) {
 	c.Status(http.StatusCreated)
 }
 
-func UpdateServer(c *gin.Context) {}
+func UpdateServer(c *gin.Context, appCtx *app.Context) {}
 
-func DeleteServer(c *gin.Context) {
+func DeleteServer(c *gin.Context, appCtx *app.Context) {
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create docker client"})
@@ -181,19 +158,19 @@ func FormatEnv(env map[string]string) []string {
 	return formattedEnv
 }
 
-func FormatPorts(ports []models.ServicePort) map[nat.Port][]nat.PortBinding {
+func FormatPorts(ports []config.Port) map[nat.Port][]nat.PortBinding {
 	portBindings := make(map[nat.Port][]nat.PortBinding)
 	for _, port := range ports {
-		containerPort := nat.Port(fmt.Sprintf("%d/%s", port.ContainerPort, port.Protocol))
+		containerPort := nat.Port(fmt.Sprintf("%d/%s", port.Container, port.Protocol))
 		hostPort := nat.PortBinding{
-			HostPort: fmt.Sprintf("%d", port.HostPort),
+			HostPort: fmt.Sprintf("%d", port.Host),
 		}
 		portBindings[containerPort] = append(portBindings[containerPort], hostPort)
 	}
 	return portBindings
 }
 
-func FormatVolumes(volumes []models.ServiceVolume) []string {
+func FormatVolumes(volumes []config.Volume) []string {
 	binds := make([]string, len(volumes))
 
 	for i, vol := range volumes {

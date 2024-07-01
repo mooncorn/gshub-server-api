@@ -2,31 +2,30 @@ package middlewares
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mooncorn/gshub-core/db"
-	"github.com/mooncorn/gshub-core/models"
-	"github.com/mooncorn/gshub-server-api/config"
+	"github.com/mooncorn/gshub-core/utils"
+	"github.com/mooncorn/gshub-server-api/app"
 )
 
-func CheckOwnership(c *gin.Context) {
-	email := c.GetString("userEmail")
+func CheckOwnership(appCtx *app.Context) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		userIDStr := c.GetString("userID")
+		userEmail := c.GetString("userEmail")
 
-	dbInstance := db.GetDatabase()
+		userID64, err := strconv.ParseUint(userIDStr, 10, 32)
+		if err != nil {
+			utils.HandleError(c, http.StatusBadRequest, "Invalid user id", err, userEmail)
+			return
+		}
 
-	// Get User
-	var user models.User
-	if err := dbInstance.GetDB().Where(&models.User{Email: email}).First(&user).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user"})
-		c.Abort()
-		return
-	}
+		if uint(userID64) != appCtx.ServiceData.OwnerID {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access unauthorized"})
+			c.Abort()
+			return
+		}
 
-	// Check if this instance belongs to this user
-	var server models.Server
-	if err := dbInstance.GetDB().Where(&models.Server{UserID: user.ID, InstanceID: config.Env.InstanceId}).First(&server).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Access unauthorized"})
-		c.Abort()
-		return
+		c.Next()
 	}
 }

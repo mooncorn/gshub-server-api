@@ -5,13 +5,14 @@ import (
 
 	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
+	"github.com/mooncorn/gshub-server-api/app"
 )
 
 type Container struct {
 	Id string `json:"id"`
 }
 
-func GetState(c *gin.Context) {
+func GetState(c *gin.Context, appCtx *app.Context) {
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create docker client"})

@@ -8,13 +8,10 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
-	"github.com/mooncorn/gshub-core/db"
-	"github.com/mooncorn/gshub-core/models"
-	"github.com/mooncorn/gshub-server-api/config"
-	"github.com/mooncorn/gshub-server-api/core"
+	"github.com/mooncorn/gshub-server-api/app"
 )
 
-func RunCommand(c *gin.Context) {
+func RunCommand(c *gin.Context, appCtx *app.Context) {
 	var request struct {
 		Cmd string `json:"cmd"`
 	}
@@ -31,37 +28,7 @@ func RunCommand(c *gin.Context) {
 		return
 	}
 
-	dbInstance := db.GetDatabase()
-
-	// Get server based on INSTANCE_ID
-	var server models.Server
-	if err := dbInstance.GetDB().Where(&models.Server{InstanceID: config.Env.InstanceId}).First(&server).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Server not found"})
-		return
-	}
-
-	// Get service
-	var service models.Service
-	if err := dbInstance.GetDB().Preload("Env.Values").Preload("Ports").Preload("Volumes").Where(&models.Service{ID: server.ServiceID}).First(&service).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Service not found"})
-		return
-	}
-
-	// Get plan
-	var plan models.Plan
-	if err := dbInstance.GetDB().Where(&models.Plan{ID: server.PlanID}).First(&plan).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Plan not found"})
-		return
-	}
-
-	// Format the game command
-	gameServer, err := core.NewGameServer(&service, &plan)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server configuration", "details": err.Error()})
-		return
-	}
-
-	formattedCmd, err := gameServer.FormatGameCommand(request.Cmd)
+	formattedCmd, err := appCtx.ServiceController.FormatGameCommand(request.Cmd)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Feature not supported"})
 		return
